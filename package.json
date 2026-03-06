@@ -4,7 +4,7 @@
     "private": true,
     "scripts": {
         "dev": "next dev",
-        "build": "cross-env NEXT_EXPORT=true next build",
+        "build": "cross-env NEXT_EXPORT=true next build && node scripts/fix-scorm-paths.js",
         "start": "next start",
         "lint": "eslint",
         "test": "jest"
