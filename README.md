@@ -302,12 +302,12 @@ These constraints mean that some default Next.js assumptions about routing and a
 
 #### Static asset path correction
 
-Next.js static export generates asset paths relative to the current page: /index.html
+Next.js static export generates asset paths relative to the current page: `/index.html`
 
-However, nested routes such as: /section1/index.html would attempt to load assets from: /section1/\_next/...
+However, nested routes such as: `/section1/index.html` would attempt to load assets from: `/section1/\_next/...`
 which does not exist in the exported package.
 
-To ensure assets load correctly from any route, NextScorm performs a **post-build patch step** that rewrites nested asset paths to: ../\_next/...
+To ensure assets load correctly from any route, NextScorm performs a `post-build patch step` that rewrites nested asset paths to: `../\_next/...`
 
 This allows all pages in the course to correctly reference the shared `_next` build output regardless of their folder depth.
 

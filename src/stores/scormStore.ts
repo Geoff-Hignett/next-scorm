@@ -23,6 +23,11 @@ export const useScormStore = create<ScormState>((set, get) => ({
     scormInited: { success: false, version: "" },
     suspendData: null,
     location: null,
+    scoreRaw: null,
+    scoreMin: null,
+    scoreMax: null,
+    completionStatus: null,
+    successStatus: null,
     resumeAvailable: false,
     resumeDecisionMade: false,
     attemptedInitialConnect: false,
@@ -52,6 +57,27 @@ export const useScormStore = create<ScormState>((set, get) => ({
         if (!result.success) {
             debugLog("warn", "scorm", "SCORM unavailable — running in standalone mode");
             return;
+        }
+
+        // Ensure course starts as incomplete unless already completed
+        if (result.version === "1.2") {
+            const status = state.API.get("cmi.core.lesson_status");
+
+            if (!["completed", "passed"].includes((status || "").toLowerCase())) {
+                state.API.set("cmi.core.lesson_status", "incomplete");
+                state.API.commit();
+
+                debugLog("info", "scorm", "Course marked incomplete on launch");
+            }
+        } else {
+            const status = state.API.get("cmi.completion_status");
+
+            if (status !== "completed") {
+                state.API.set("cmi.completion_status", "incomplete");
+                state.API.commit();
+
+                debugLog("info", "scorm", "Course marked incomplete on launch");
+            }
         }
 
         get().hydrateFromPersistence();
@@ -99,7 +125,7 @@ export const useScormStore = create<ScormState>((set, get) => ({
     scormSetSuspendData: (partial: Partial<SuspendPayload>) => {
         const state = get();
 
-        console.log("[SCORM] scormSetSuspendData", partial, "connected:", state.scormAPIConnected);
+        debugLog("info", "scorm", "Updating suspend data", { partial });
 
         const existing = state.scormGetSuspendData();
         const { v: _ignored, ...existingWithoutV } = existing ?? {};
@@ -119,8 +145,16 @@ export const useScormStore = create<ScormState>((set, get) => ({
 
             state.API.set("cmi.suspend_data", encoded);
             state.API.commit();
+
+            debugLog("info", "scorm", "Suspend data committed to LMS", {
+                size: encoded.length,
+            });
         } else {
             localStorage.setItem("suspend_data", encoded);
+
+            debugLog("info", "scorm", "Suspend data saved locally", {
+                size: encoded.length,
+            });
         }
 
         set({ suspendData: encoded });
@@ -180,47 +214,85 @@ export const useScormStore = create<ScormState>((set, get) => ({
     scormSetComplete: () => {
         const state = get();
 
+        const completionObj = {
+            completionStatus: "completed",
+            successStatus: "passed",
+        };
+
+        debugLog("info", "scorm", "Marking course complete");
+
         if (state.scormAPIConnected) {
             if (state.version === "1.2") {
                 state.API.set("cmi.core.lesson_status", "completed");
             } else {
                 state.API.set("cmi.completion_status", "completed");
+                state.API.set("cmi.success_status", "passed");
             }
+
             state.API.commit();
-            debugLog("info", "scorm", "SCORM course marked complete", {
+
+            debugLog("info", "scorm", "Completion committed to LMS", {
                 version: state.version,
+                completionStatus: completionObj.completionStatus,
             });
         } else {
-            state.scormlogNotConnected();
+            localStorage.setItem("completion", JSON.stringify(completionObj));
+
+            debugLog("info", "scorm", "Completion saved locally", {
+                completionStatus: completionObj.completionStatus,
+            });
         }
+
+        set({
+            completionStatus: completionObj.completionStatus,
+            successStatus: completionObj.successStatus,
+        });
     },
 
     scormSetLocation: (location: number) => {
         const state = get();
 
-        // Persist bookmark (cheap + frequent)
+        debugLog("info", "scorm", "Setting location", { location });
+
         if (state.scormAPIConnected) {
             if (state.version === "1.2") {
                 state.API.set("cmi.core.lesson_location", location.toString());
             } else {
                 state.API.set("cmi.location", location.toString());
             }
+
             state.API.commit();
+
+            debugLog("info", "scorm", "Location committed to LMS", {
+                location,
+                version: state.version,
+            });
         } else {
             localStorage.setItem("bookmark", location.toString());
+
+            debugLog("info", "scorm", "Location saved locally", {
+                location,
+            });
         }
 
-        // ✅ ALSO merge into suspend data (authoritative)
+        // merge into suspend data
         state.scormSetSuspendData({ location });
 
         set({ location });
     },
 
     scormSetScore: (score: number) => {
+        console.log("SCORM SET SCORE FUNCTION CALLED");
         const state = get();
 
-        console.log("setting score:", score);
+        const scoreObj = {
+            raw: score,
+            min: 0,
+            max: 100,
+        };
+
         debugLog("info", "scorm", "Setting SCORM score", { score });
+
         if (state.scormAPIConnected) {
             if (state.version === "1.2") {
                 state.API.set("cmi.core.score.min", "0");
@@ -231,8 +303,26 @@ export const useScormStore = create<ScormState>((set, get) => ({
                 state.API.set("cmi.score.max", "100");
                 state.API.set("cmi.score.raw", score.toString());
             }
+
             state.API.commit();
+
+            debugLog("info", "scorm", "Score committed to LMS", {
+                score,
+                version: state.version,
+            });
+        } else {
+            localStorage.setItem("score", JSON.stringify(scoreObj));
+
+            debugLog("info", "scorm", "Score saved locally", {
+                score,
+            });
         }
+
+        set({
+            scoreRaw: scoreObj.raw,
+            scoreMin: scoreObj.min,
+            scoreMax: scoreObj.max,
+        });
     },
 
     hydrateFromPersistence: () => {
@@ -266,11 +356,55 @@ export const useScormStore = create<ScormState>((set, get) => ({
             }
         }
 
+        let scoreRaw: number | null = null;
+        let scoreMin: number | null = null;
+        let scoreMax: number | null = null;
+
+        if (!state.scormAPIConnected) {
+            const storedScore = localStorage.getItem("score");
+
+            if (storedScore) {
+                try {
+                    const parsed = JSON.parse(storedScore);
+
+                    scoreRaw = typeof parsed.raw === "number" ? parsed.raw : null;
+                    scoreMin = typeof parsed.min === "number" ? parsed.min : null;
+                    scoreMax = typeof parsed.max === "number" ? parsed.max : null;
+                } catch {
+                    debugLog("error", "scorm", "Failed to parse local score");
+                }
+            }
+        }
+
+        let completionStatus: string | null = null;
+        let successStatus: string | null = null;
+
+        if (!state.scormAPIConnected) {
+            const storedCompletion = localStorage.getItem("completion");
+
+            if (storedCompletion) {
+                try {
+                    const parsed = JSON.parse(storedCompletion);
+
+                    completionStatus = typeof parsed.completionStatus === "string" ? parsed.completionStatus : null;
+
+                    successStatus = typeof parsed.successStatus === "string" ? parsed.successStatus : null;
+                } catch {
+                    debugLog("error", "scorm", "Failed to parse local completion");
+                }
+            }
+        }
+
         set({
             location: loc,
             resumeAvailable: typeof loc === "number" && loc > 0,
             resumeDecisionMade: false,
             suspendData: suspend ? encodeSuspendData(suspend) : null,
+            scoreRaw,
+            scoreMin,
+            scoreMax,
+            completionStatus,
+            successStatus,
         });
 
         if (suspend?.lang) {
@@ -280,13 +414,45 @@ export const useScormStore = create<ScormState>((set, get) => ({
         }
     },
 
+    scormReconnect: () => {
+        const state = get();
+
+        debugLog("info", "scorm", "Manual reconnect requested");
+
+        state.API.configure({ version: "1.2", debug: true });
+
+        const result = state.API.initialize();
+
+        set({
+            scormInited: result,
+            scormAPIConnected: result.success,
+            version: result.version ?? "",
+        });
+
+        if (!result.success) {
+            debugLog("warn", "scorm", "Reconnect failed — still standalone mode");
+            return;
+        }
+
+        debugLog("info", "scorm", "SCORM API connected via reconnect");
+
+        get().hydrateFromPersistence();
+    },
+
     scormTerminate: () => {
         const state = get();
 
-        if (!state.scormAPIConnected) return;
+        if (state.scormAPIConnected) {
+            state.API.terminate();
 
-        state.API.terminate();
-        debugLog("info", "scorm", "SCORM session terminated");
+            set({
+                scormAPIConnected: false,
+            });
+
+            debugLog("info", "scorm", "SCORM session terminated");
+        } else {
+            debugLog("info", "scorm", "Terminate called in standalone mode");
+        }
     },
 
     updateLocationIfAdvanced: (newLocation: number) => {
@@ -334,12 +500,19 @@ export const useScormStore = create<ScormState>((set, get) => ({
 
         localStorage.removeItem("bookmark");
         localStorage.removeItem("suspend_data");
+        localStorage.removeItem("score");
+        localStorage.removeItem("completion");
 
         set({
             location: 0,
             suspendData: null,
             resumeAvailable: false,
             resumeDecisionMade: true,
+            scoreRaw: null,
+            scoreMin: null,
+            scoreMax: null,
+            completionStatus: null,
+            successStatus: null,
         });
 
         debugLog("info", "scorm", "User restarted course");

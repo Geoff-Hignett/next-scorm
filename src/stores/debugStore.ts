@@ -24,8 +24,7 @@ type DebugState = {
 };
 
 export const useDebugStore = create<DebugState>((set, get) => ({
-    enabled: process.env.NODE_ENV === "development",
-
+    enabled: false,
     visible: false,
     events: [],
 
@@ -45,8 +44,6 @@ export const useDebugStore = create<DebugState>((set, get) => ({
     },
 
     clear: () => set({ events: [] }),
-
     toggleVisible: () => set((state) => ({ visible: !state.visible })),
-
     setVisible: (visible) => set({ visible }),
 }));

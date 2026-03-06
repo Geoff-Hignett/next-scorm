@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { useDebugStore } from "@/stores/debugStore";
 import { useScormStore } from "@/stores/scormStore";
 import { isDebugEnabled } from "@/lib/infra/env";
@@ -41,7 +41,7 @@ function SuspendDataView({ data }: { data: string | null | undefined }) {
     }
 
     return (
-        <div className="mt-2 space-y-2">
+        <div className="mt-2 space-y-2 flex gap-5">
             <div>
                 <div className="text-xs text-gray-500 mb-1">Decoded</div>
                 <pre className="rounded bg-gray-100 p-2 text-xs">{parseError ? "Decode failed" : JSON.stringify(decoded, null, 2)}</pre>
@@ -56,18 +56,38 @@ function SuspendDataView({ data }: { data: string | null | undefined }) {
 }
 
 export default function DebugPanel() {
-    const { visible, events, clear } = useDebugStore();
+    const { enabled, visible, events, clear } = useDebugStore();
     const scorm = useScormStore();
+    const logRef = useRef<HTMLDivElement | null>(null);
 
-    if (!isDebugEnabled || !visible) return null;
+    console.log("DEBUG PANEL STATE", {
+        enabled,
+        visible,
+    });
+
+    useEffect(() => {
+        if (logRef.current) {
+            logRef.current.scrollTop = logRef.current.scrollHeight;
+        }
+    }, [events]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const enabled = process.env.NODE_ENV === "development" || params.get("debug") === "true";
+
+        useDebugStore.setState({ enabled });
+    }, []);
+
+    if (!enabled || !visible) return null;
 
     const source: "LMS" | "Local" = scorm.scormAPIConnected ? "LMS" : "Local";
+    const scoreDisplay = scorm.scoreRaw !== null && scorm.scoreRaw !== undefined ? `${scorm.scoreRaw} / ${scorm.scoreMax ?? 100}` : "—";
 
     return (
         <div className="fixed inset-4 z-[9998] bg-white rounded-xl shadow-2xl flex flex-col">
             {/* Header */}
             <header className="flex justify-between px-4 py-2 bg-gray-900 text-white">
-                <span className="font-semibold">Debug Panel</span>
+                <span className="font-semibold">Debug Panel (SCORM {scorm.version || "standalone"})</span>
                 <button onClick={clear} className="text-sm underline">
                     Clear logs
                 </button>
@@ -92,6 +112,12 @@ export default function DebugPanel() {
                 </div>
 
                 <Row label="Location" value={scorm.location ?? "—"} source={source} />
+
+                <Row label="Score" value={scoreDisplay} source={source} />
+
+                <Row label="Completion" value={scorm.completionStatus ?? "—"} source={source} />
+
+                {scorm.version !== "1.2" && <Row label="Success" value={scorm.successStatus ?? "—"} source={source} />}
             </section>
 
             {/* Actions */}
@@ -102,18 +128,21 @@ export default function DebugPanel() {
                     {/* Progress */}
                     <div>
                         <div className="text-gray-500 text-xs mb-1">Progress</div>
+
                         <div className="flex flex-wrap gap-2">
                             <ActionButton
                                 label="Set suspend data → {foo:'bar'}"
                                 onClick={() =>
                                     scorm.scormSetSuspendData({
                                         foo: "bar",
-                                        location: 1,
                                     })
                                 }
                             />
+
                             <ActionButton label="Set location → 1" onClick={() => scorm.scormSetLocation(1)} />
+
                             <ActionButton label="Set score → 50" onClick={() => scorm.scormSetScore(50)} />
+
                             <ActionButton label="Mark complete" onClick={scorm.scormSetComplete} />
                         </div>
                     </div>
@@ -121,8 +150,10 @@ export default function DebugPanel() {
                     {/* Lifecycle */}
                     <div>
                         <div className="text-gray-500 text-xs mb-1">Lifecycle</div>
+
                         <div className="flex flex-wrap gap-2">
-                            <ActionButton label="Reconnect" onClick={scorm.scormConnect} />
+                            <ActionButton label="Reconnect" onClick={scorm.scormReconnect} />
+
                             <ActionButton label="Terminate" onClick={scorm.scormTerminate} />
                         </div>
                     </div>
@@ -130,7 +161,7 @@ export default function DebugPanel() {
             </section>
 
             {/* Logs */}
-            <section className="flex-1 overflow-auto px-4 py-2 font-mono text-xs bg-gray-50">
+            <section ref={logRef} className="flex-1 overflow-auto px-4 py-2 font-mono text-xs bg-gray-50">
                 {events.length === 0 ? (
                     <div className="text-gray-400">No logs yet</div>
                 ) : (
