@@ -5,7 +5,8 @@ const isExport = process.env.NEXT_EXPORT === "true";
 const nextConfig: NextConfig = {
     output: isExport ? "export" : undefined,
 
-    assetPrefix: isExport ? "./" : undefined,
+    // critical change
+    assetPrefix: isExport ? "." : undefined,
 
     trailingSlash: true,
 
