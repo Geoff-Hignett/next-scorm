@@ -287,7 +287,55 @@ This keeps learning logic clean and prevents version-specific edge cases from sp
 
 ---
 
-### 8. Debug tooling and local development support
+### 8. Next.js static export and LMS compatibility
+
+NextScorm is designed to run inside LMS environments that expect **static SCORM packages** rather than traditional server-hosted web applications.
+
+As a result, several adjustments are required when using **Next.js static export**, because LMS platforms typically:
+
+- serve content from deep nested paths
+- run courses inside iframes
+- lack server-side routing or rewrite rules
+- sometimes load courses directly from static storage
+
+These constraints mean that some default Next.js assumptions about routing and asset resolution do not hold in LMS environments.
+
+#### Static asset path correction
+
+Next.js static export generates asset paths relative to the current page: /index.html
+
+However, nested routes such as: /section1/index.html would attempt to load assets from: /section1/\_next/...
+which does not exist in the exported package.
+
+To ensure assets load correctly from any route, NextScorm performs a **post-build patch step** that rewrites nested asset paths to: ../\_next/...
+
+This allows all pages in the course to correctly reference the shared `_next` build output regardless of their folder depth.
+
+#### Runtime route detection
+
+In a typical Next.js application, the active route is resolved using the framework router.
+
+However, in SCORM environments the router can behave unpredictably because content is executed from:
+
+- static file systems
+- LMS content sandboxes
+- nested directories inside LMS course containers
+- iframe contexts where path resolution differs from standard web hosting
+
+To ensure deterministic behaviour, NextScorm resolves the active route **at runtime using the browser location** rather than relying entirely on the Next.js router during hydration.
+
+This approach ensures that:
+
+- static exports behave consistently across routes
+- hydration mismatches are avoided during client startup
+- courses run correctly when opened via `file://`
+- deep linking and bookmarking behave predictably inside LMS players
+
+While this strategy differs slightly from conventional Next.js routing patterns, it provides significantly more reliable behaviour in the constrained runtime environments typical of SCORM LMS platforms.
+
+---
+
+### 9. Debug tooling and local development support
 
 Working with SCORM often involves **slow feedback loops**, opaque LMS errors, and limited debugging tools.
 
