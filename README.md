@@ -70,13 +70,31 @@ The `out/` directory contains the final course assets.
 2. Copy the appropriate manifest into the `out/` directory
 3. Zip the contents of `out/`
 
+### Testing
+
+Core runtime logic is covered by unit tests using **Jest** and **ts-jest**.
+
+Tests focus on deterministic behaviour in the SCORM runtime store, including:
+
+- persistence hydration precedence (LMS vs browser)
+- monotonic route-based bookmarking
+- resume availability logic
+
+The SCORM API is mocked so tests can run without an LMS.
+
+To run the test suite:
+
+`npm run test`
+
+---
+
 ## Project structure
 
 ```id="4imw9x"
 src/
-  app/            Next.js course pages (each route is a course screen)
-  components/     UI components (SCORM wrapper, resume prompt, debug UI)
-  stores/         Zustand runtime stores (SCORM state, language, debug)
+  app/            Master layout and Next.js course pages (each route is a course screen)
+  components/     UI components grouped by feature
+  stores/         Zustand runtime stores (SCORM state, i18n, debug)
   lib/            Core runtime utilities and SCORM integration
   types/          Shared TypeScript types
 
@@ -358,17 +376,3 @@ To mitigate this, the project includes a dedicated SCORM debug interface that al
 The built-in debug panel exposes SCORM state and persistence behaviour during local development, allowing developers to inspect and manipulate progress without an LMS.
 
 ![SCORM debug panel](docs/demo/debug-panel.png)
-
-### 10 Testing
-
-Core runtime logic is covered by unit tests using **Jest** and **ts-jest**.
-
-Tests focus on deterministic behaviour in the SCORM runtime store, including:
-
-- persistence hydration precedence (LMS vs browser)
-- monotonic route-based bookmarking
-- resume availability logic
-
-The SCORM API is mocked so tests can run without an LMS.
-
----
