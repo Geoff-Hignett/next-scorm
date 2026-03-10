@@ -5,17 +5,14 @@ A modern **Next.js + TypeScript SCORM course shell** with:
 - SCORM 1.2 & 2004 runtime support
 - Global SCORM lifecycle management (SPA-safe initialise / terminate)
 - Robust suspend data & location persistence with LMS ↔ local fallback
-- Progressive runtime hydration (local preview → LMS authoritative)
+- Environment-aware hydrated persistence (LMS ↔ localStorage)
 - Route-based bookmarking with learner-controlled resume / restart flow
 - Route and component-based internationalisation (i18n)
-- Built-in SCORM debug tooling for local development
+- Built-in SCORM debug tooling for development
 
 ---
 
 ## Demo
-
-> The examples below show NextScorm running without an LMS, using local persistence.
-> The same behaviour applies when connected to a SCORM 1.2 or 2004 LMS.
 
 ### Course lifecycle & resume flow
 
@@ -43,6 +40,59 @@ The goal is not to replace LMS platforms or hide SCORM’s limitations, but to m
 In short:  
 NextScorm is designed to make **SCORM behave predictably in a modern web application**, without sacrificing LMS compatibility or learner experience.
 
+## Using the course shell
+
+### Development
+
+Run the course locally without an LMS:
+
+`npm install`
+
+`npm run dev`
+
+### Building the course
+
+Create the static export used by the SCORM runtime:
+
+`npm run build`
+
+The build process:
+
+1. Runs next build with static export enabled
+2. Outputs the course to the out/ directory
+3. Applies SCORM path fixes using scripts/fix-scorm-paths.js
+
+The `out/` directory contains the final course assets.
+
+### Packaging as SCORM
+
+1. Run the build
+2. Copy the appropriate manifest into the `out/` directory
+3. Zip the contents of `out/`
+
+## Project structure
+
+```id="4imw9x"
+src/
+  app/            Next.js course pages (each route is a course screen)
+  components/     UI components (SCORM wrapper, resume prompt, debug UI)
+  stores/         Zustand runtime stores (SCORM state, language, debug)
+  lib/            Core runtime utilities and SCORM integration
+  types/          Shared TypeScript types
+
+packaging/        SCORM manifest templates (1.2 and 2004)
+
+public/
+  lang/           Static language files
+  mock-api/       Mock data used during development
+
+scripts/
+  fix-scorm-paths.js   Post-build adjustments for static SCORM export
+
+tests/
+  scormStore.test.ts   Runtime logic tests
+```
+
 ## 🧠 Architectural Principles
 
 ### 1. Progressive language delivery (local → API)
@@ -52,18 +102,18 @@ The language system is designed to support **multiple delivery strategies**, dep
 Out of the box, it supports:
 
 - **Local JSON**  
-  Languages are bundled with the app for fast startup and zero network dependency. This suits development-stage apps, static courses, and pre-CMS\* stage builds.
+  Languages are bundled with the app for fast startup and zero network dependency. This suits development-stage apps, static courses, and pre-CMS stage builds.
 
 - **Per-language API (`apiSingle`)**  
   Each language is fetched independently (e.g. `/api/lang/en-GB`), allowing:
     - incremental loading
     - smaller payloads
     - easier cache control
-    - CMS\*-backed language updates without rebuilding the application
+    - CMS-backed language updates without rebuilding the application
 
 - **All-languages API (`apiAll`)**  
    All languages are fetched from a single aggregated endpoint (e.g. `/api/lang/all`),
-  returning a list of language payloads in a consistent CMS\*-friendly shape. This is preferred when:
+  returning a list of language payloads in a consistent CMS-friendly shape. This is preferred when:
     - runtime language switching is allowed
     - languages are small
     - the backend already aggregates translations centrally
@@ -81,7 +131,7 @@ The active language delivery strategy is selected at runtime via environment con
 This allows the same codebase to be deployed across different LMSs, environments,
 and content pipelines without code changes.
 
-\*CMS-backed in this context refers to publish-time content delivery rather than live,
+CMS-backed in this context refers to publish-time content delivery rather than live,
 real-time updates. Language data is treated as stable for the duration of a learner session.
 
 #### Trade-offs
@@ -115,61 +165,29 @@ The SCORM connection:
 
 This mirrors how LMS platforms expect SCORM content to behave and avoids repeated or invalid initialise / terminate calls during SPA navigation.
 
-### 4 Runtime hydration and persistence precedence
+### 4 Runtime persistence
 
-On application startup, the course must restore learner progress before it knows
-whether a SCORM LMS is available.
+The course supports two execution environments:
 
-The runtime follows a **progressive hydration strategy**:
+- **SCORM LMS runtime**
+- **Standalone browser**
 
-1. **Initial hydration from browser storage**
-    - Used during local development and preview
-    - Provides immediate state after refresh
-    - Safe no-op for LMS-only users with no local data
+Persistence behaviour depends on which environment is detected.
 
-2. **Authoritative hydration from the LMS**
-    - Triggered after a successful SCORM initialise
-    - Overrides any locally hydrated state
-    - Ensures LMS data is always the final source of truth
+#### SCORM LMS mode
 
-This approach guarantees that:
+When the SCORM API is available, the LMS is treated as the **source of truth**.  
+Learner state is restored exclusively from SCORM runtime data such as
+`cmi.location`, `cmi.suspend_data`, score, and completion status.
 
-- local development works without an LMS
-- LMS-only learners always resume correctly
-- state is never lost due to timing or environment differences
+#### Standalone browser mode
 
-Hydration is idempotent and may occur more than once during startup.
-The store always hydrates from the best source available at that moment.
+When no SCORM API is present, the course falls back to browser persistence.
 
-In development, React 18 Strict Mode may cause initialisation and hydration logic
-to run more than once. All SCORM and persistence operations are written to be
-idempotent to ensure this does not result in duplicated side effects.
+This allows the course to function normally during development and static preview.
 
-#### Why global?
-
-SCORM APIs are stateful and fragile. Re-initialising the connection on every route change can lead to:
-
-- duplicate `Initialize()` calls
-- lost suspend data
-- invalid session states in stricter LMS implementations
-
-By mounting the SCORM lifecycle once at the root layout level, the application behaves more like a traditional SCORM course while still benefiting from client-side routing.
-
-#### Implementation
-
-A dedicated `ScormWrapper` component is mounted at the application root. This is responsible for:
-
-- establishing the SCORM connection on first render
-- exposing SCORM state and actions via a global store
-- ensuring `Terminate()` is called exactly once on teardown
-
-All SCORM reads and writes (location, suspend data, score, objectives, interactions) flow through a single store, keeping side effects predictable and auditable.
-
-This design ensures that:
-
-- page components remain focused on UI and learning logic
-- SCORM concerns are isolated and testable
-- the course behaves consistently across SCORM 1.2 and 2004 LMSs
+All hydration logic is **idempotent**, so repeated initialisation (for example
+under React 18 Strict Mode) does not create duplicate side effects.
 
 ### 5. Route-based bookmarking and learner resume flow
 
@@ -254,15 +272,6 @@ To address this, suspend data is:
 
 This allows complex course state to be stored safely without relying on LMS-specific behaviour.
 
-#### Design goals
-
-- predictable encoding and decoding
-- no silent truncation
-- graceful failure when limits are exceeded
-- compatibility across SCORM 1.2 and 2004
-
-All suspend data writes flow through a single store action, ensuring encoding rules and length checks are applied consistently.
-
 ---
 
 ### 7. SCORM version abstraction (1.2 vs 2004)
@@ -328,7 +337,6 @@ This approach ensures that:
 
 - static exports behave consistently across routes
 - hydration mismatches are avoided during client startup
-- courses run correctly when opened via `file://`
 - deep linking and bookmarking behave predictably inside LMS players
 
 While this strategy differs slightly from conventional Next.js routing patterns, it provides significantly more reliable behaviour in the constrained runtime environments typical of SCORM LMS platforms.
@@ -343,19 +351,24 @@ To mitigate this, the project includes a dedicated SCORM debug interface that al
 
 - inspect the detected SCORM version
 - manually trigger get and set operations
-- test objectives, scores, and completion behaviour
-- validate suspend data writes outside of an LMS
-
-When no SCORM API is available (for example during local development), the system gracefully falls back to browser storage. This allows:
-
-- development without an LMS
-- rapid iteration on learning logic
-- easier debugging of state transitions
-
-This dual-mode behaviour ensures that developers can build and test confidently, while the production build remains fully LMS-compliant.
+- test scores and completion behaviour
 
 ### Debug panel (local development)
 
 The built-in debug panel exposes SCORM state and persistence behaviour during local development, allowing developers to inspect and manipulate progress without an LMS.
 
 ![SCORM debug panel](docs/demo/debug-panel.png)
+
+### 10 Testing
+
+Core runtime logic is covered by unit tests using **Jest** and **ts-jest**.
+
+Tests focus on deterministic behaviour in the SCORM runtime store, including:
+
+- persistence hydration precedence (LMS vs browser)
+- monotonic route-based bookmarking
+- resume availability logic
+
+The SCORM API is mocked so tests can run without an LMS.
+
+---
