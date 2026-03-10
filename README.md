@@ -74,6 +74,10 @@ The `out/` directory contains the final course assets.
 
 Core runtime logic is covered by unit tests using **Jest** and **ts-jest**.
 
+To run the test suite:
+
+`npm run test`
+
 Tests focus on deterministic behaviour in the SCORM runtime store, including:
 
 - persistence hydration precedence (LMS vs browser)
@@ -81,10 +85,6 @@ Tests focus on deterministic behaviour in the SCORM runtime store, including:
 - resume availability logic
 
 The SCORM API is mocked so tests can run without an LMS.
-
-To run the test suite:
-
-`npm run test`
 
 ---
 
