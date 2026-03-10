@@ -11,6 +11,7 @@ import { create } from "zustand";
 import { scormAPI } from "@/lib/scormApi";
 import type { ScormState, SuspendPayload } from "./scormTypes";
 import { debugLog } from "@/lib/infra/debugLogger";
+import { SCORM_VERSION } from "@/lib/infra/env";
 
 import { encodeSuspendData, decodeSuspendData } from "@/lib/scorm/suspendDataCodec";
 
@@ -43,40 +44,60 @@ export const useScormStore = create<ScormState>((set, get) => ({
 
         set({ attemptedInitialConnect: true });
 
-        debugLog("info", "scorm", "SCORM connect attempted");
+        const version = SCORM_VERSION;
 
-        state.API.configure({ version: "1.2", debug: true });
+        debugLog("info", "scorm", `SCORM connect attempted (${version})`);
+
+        state.API.configure({
+            version,
+            debug: true,
+        });
+
         const result = state.API.initialize();
 
         set({
             scormInited: result,
             scormAPIConnected: result.success,
-            version: result.version ?? "",
+            version,
         });
 
         if (!result.success) {
             debugLog("warn", "scorm", "SCORM unavailable — running in standalone mode");
+
+            get().hydrateFromPersistence();
             return;
         }
 
-        // Ensure course starts as incomplete unless already completed
-        if (result.version === "1.2") {
+        if (version === "1.2") {
             const status = state.API.get("cmi.core.lesson_status");
+            const normalized = (status || "").toLowerCase();
 
-            if (!["completed", "passed"].includes((status || "").toLowerCase())) {
+            if (normalized !== "completed" && normalized !== "passed") {
                 state.API.set("cmi.core.lesson_status", "incomplete");
                 state.API.commit();
 
                 debugLog("info", "scorm", "Course marked incomplete on launch");
             }
         } else {
-            const status = state.API.get("cmi.completion_status");
+            const completion = (state.API.get("cmi.completion_status") || "").toLowerCase();
+            const success = (state.API.get("cmi.success_status") || "").toLowerCase();
 
-            if (status !== "completed") {
+            let needsCommit = false;
+
+            if (completion !== "completed") {
                 state.API.set("cmi.completion_status", "incomplete");
-                state.API.commit();
+                needsCommit = true;
+            }
 
-                debugLog("info", "scorm", "Course marked incomplete on launch");
+            // Prevent LMS auto-passing behaviour
+            if (!success || success === "unknown") {
+                state.API.set("cmi.success_status", "failed");
+                needsCommit = true;
+            }
+
+            if (needsCommit) {
+                state.API.commit();
+                debugLog("info", "scorm", "Course status initialised on launch");
             }
         }
 
@@ -332,26 +353,28 @@ export const useScormStore = create<ScormState>((set, get) => ({
 
         let loc: number | null = null;
 
-        // 1. SCORM lesson_location ALWAYS wins when connected
         if (state.scormAPIConnected) {
+            // LMS mode → only SCORM data
             const lmsLoc = state.scormGetLocation();
+
             if (typeof lmsLoc === "number" && lmsLoc > 0) {
                 loc = lmsLoc;
             }
-        }
+        } else {
+            // Standalone mode → browser persistence
 
-        // 2. Then suspend data
-        if (loc === null && typeof suspend?.location === "number") {
-            loc = suspend.location;
-        }
+            if (typeof suspend?.location === "number") {
+                loc = suspend.location;
+            }
 
-        // 3. Finally localStorage
-        if (loc === null) {
-            const bookmark = localStorage.getItem("bookmark");
-            if (bookmark !== null) {
-                const parsed = Number(bookmark);
-                if (!Number.isNaN(parsed)) {
-                    loc = parsed;
+            if (loc === null) {
+                const bookmark = localStorage.getItem("bookmark");
+
+                if (bookmark !== null) {
+                    const parsed = Number(bookmark);
+                    if (!Number.isNaN(parsed)) {
+                        loc = parsed;
+                    }
                 }
             }
         }
