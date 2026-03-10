@@ -56,29 +56,22 @@ function SuspendDataView({ data }: { data: string | null | undefined }) {
 }
 
 export default function DebugPanel() {
-    const { enabled, visible, events, clear } = useDebugStore();
+    const { visible, events, clear } = useDebugStore();
     const scorm = useScormStore();
     const logRef = useRef<HTMLDivElement | null>(null);
 
-    console.log("DEBUG PANEL STATE", {
-        enabled,
-        visible,
-    });
+    useEffect(() => {
+        useDebugStore.setState({ enabled: isDebugEnabled });
+    }, []);
 
+    // Autoscroll logger downwards
     useEffect(() => {
         if (logRef.current) {
             logRef.current.scrollTop = logRef.current.scrollHeight;
         }
     }, [events]);
 
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const enabled = process.env.NODE_ENV === "development" || params.get("debug") === "true";
-
-        useDebugStore.setState({ enabled });
-    }, []);
-
-    if (!enabled || !visible) return null;
+    if (!isDebugEnabled || !visible) return null;
 
     const source: "LMS" | "Local" = scorm.scormAPIConnected ? "LMS" : "Local";
     const scoreDisplay = scorm.scoreRaw !== null && scorm.scoreRaw !== undefined ? `${scorm.scoreRaw} / ${scorm.scoreMax ?? 100}` : "—";
