@@ -11,6 +11,7 @@ export default function LangWrapper({ children }: { children: React.ReactNode })
         if (mode !== "local") {
             loadLang(); // only fetch in API mode
         }
+        // intentionally run only once on mount
         // loadLang is stable (Zustand)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
