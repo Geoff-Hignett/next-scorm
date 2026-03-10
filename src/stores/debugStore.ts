@@ -1,3 +1,14 @@
+/**
+ * Debug Store
+ *
+ * Global logging store used by the in-course Debug Panel.
+ * Allows runtime systems (SCORM, language loading, etc.)
+ * to emit structured events that can be inspected during
+ * development or when debugging inside an LMS.
+ *
+ * Logs are only recorded when `enabled` is true.
+ */
+
 import { create } from "zustand";
 
 export type DebugLevel = "info" | "warn" | "error";

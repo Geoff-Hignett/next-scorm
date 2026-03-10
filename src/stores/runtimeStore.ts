@@ -1,3 +1,11 @@
+/**
+ * Runtime Store
+ *
+ * Holds global runtime flags used by the course shell UI.
+ * This includes development/debug state that may be controlled
+ * via environment variables, query parameters, or LMS settings.
+ */
+
 import { create } from "zustand";
 
 type RuntimeState = {
