@@ -90,7 +90,7 @@ The SCORM API is mocked so tests can run without an LMS.
 
 ## Project structure
 
-```id="4imw9x"
+```
 src/
   app/            Master layout and Next.js course pages (each route is a course screen)
   components/     UI components grouped by feature
