@@ -90,26 +90,26 @@ The SCORM API is mocked so tests can run without an LMS.
 
 ## Project structure
 
-`
+```id="4imw9x"
 src/
-app/ Master layout and Next.js course pages (each route is a course screen)
-components/ UI components grouped by feature
-stores/ Zustand runtime stores (SCORM state, i18n, debug)
-lib/ Core runtime utilities and SCORM integration
-types/ Shared TypeScript types
+  app/            Master layout and Next.js course pages (each route is a course screen)
+  components/     UI components grouped by feature
+  stores/         Zustand runtime stores (SCORM state, i18n, debug)
+  lib/            Core runtime utilities and SCORM integration
+  types/          Shared TypeScript types
 
-packaging/ SCORM manifest templates (1.2 and 2004)
+packaging/        SCORM manifest templates (1.2 and 2004)
 
 public/
-lang/ Static language files
-mock-api/ Mock data used during development
+  lang/           Static language files
+  mock-api/       Mock data used during development
 
 scripts/
-fix-scorm-paths.js Post-build adjustments for static SCORM export
+  fix-scorm-paths.js   Post-build adjustments for static SCORM export
 
 tests/
-scormStore.test.ts Runtime logic tests
-`
+  scormStore.test.ts   Runtime logic tests
+```
 
 ## 🧠 Architectural Principles
 
